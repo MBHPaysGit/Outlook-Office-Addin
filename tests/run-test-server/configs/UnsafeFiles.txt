@@ -1,0 +1,4 @@
+.exe
+.zip
+secret
+社外秘

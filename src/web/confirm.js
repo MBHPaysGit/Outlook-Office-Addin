@@ -1,0 +1,378 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+Copyright (c) 2025 ClearCode Inc.
+*/
+import { L10n } from "./l10n.mjs";
+import { SafeBccConfirmation } from "./safe-bcc-confirmation.mjs";
+import { AddedDomainsReconfirmation } from "./added-domains-reconfirmation.mjs";
+import { ConfirmData } from "./confirm-data.mjs";
+import { Reconfirmation } from "./reconfirmation.mjs";
+import { UnsafeDomainsReconfirmation } from "./unsafe-domains-reconfirmation.mjs";
+import { UnsafeAddressesReconfirmation } from "./unsafe-addresses-reconfirmation.mjs";
+import { UnsafeFilesReconfirmation } from "./unsafe-files-reconfirmation.mjs";
+import { UnsafeBodiesConfirmation } from "./unsafe-bodies-confirmation.mjs";
+import { Config } from "./config.mjs";
+import * as Dialog from "./dialog.mjs";
+import DOMPurify from "dompurify";
+
+let l10n;
+let safeBccConfirmation;
+let reconfirmation;
+let addedDomainsReconfirmation;
+let unsafeDomainsReconfirmation;
+let unsafeAddressesReconfirmation;
+let unsafeFilesReconfirmation;
+let unsafeBodiesConfirmation;
+
+const CARD_ID_MAP = {
+  UntrustedDomains: "untrusted-domains-card",
+  TrustedDomains: "trusted-domains-card",
+  Subject: "mail-subject-card",
+  Body: "mail-body-card",
+  Misc: "misc-card",
+};
+
+Office.onReady(() => {
+  if (window !== window.parent) {
+    // Inframe mode
+    document.documentElement.classList.add("in-frame");
+  }
+  const language = Office.context.displayLanguage;
+  l10n = L10n.get(language);
+  l10n.ready.then(() => l10n.translateAll());
+  safeBccConfirmation = new SafeBccConfirmation(language);
+  reconfirmation = new Reconfirmation();
+  addedDomainsReconfirmation = new AddedDomainsReconfirmation(language);
+  unsafeDomainsReconfirmation = new UnsafeDomainsReconfirmation(language);
+  unsafeAddressesReconfirmation = new UnsafeAddressesReconfirmation(language);
+  unsafeFilesReconfirmation = new UnsafeFilesReconfirmation(language);
+  unsafeBodiesConfirmation = new UnsafeBodiesConfirmation(language);
+
+  document.documentElement.setAttribute("lang", language);
+
+  Office.context.ui.addHandlerAsync(
+    Office.EventType.DialogParentMessageReceived,
+    onMessageFromParent,
+    () => {
+      sendStatusToParent("ready");
+    }
+  );
+});
+
+async function loadCustomCssIfExists() {
+  try {
+    const path = "custom-css/confirm.css";
+    const res = await fetch(path, { method: "HEAD" });
+    if (!res.ok) {
+      console.debug("No custom CSS found, skipping loading custom-css/confirm.css");
+      return;
+    }
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = path;
+    document.head.appendChild(link);
+  } catch (error) {
+    console.debug("Failed to load custom CSS.", error);
+  }
+}
+
+let counter = 0;
+function generateTempId() {
+  return `fcm_temp_${counter++}_${Date.now()}`;
+}
+
+function sendStatusToParent(status) {
+  const messageObject = { status: status };
+  const jsonMessage = JSON.stringify(messageObject);
+  Office.context.ui.messageParent(jsonMessage);
+}
+
+window.onCheckAllTrusted = () => {
+  const checkTargetLength = document.querySelectorAll("fluent-checkbox.check-target").length;
+  const checkedTargetLength = document.querySelectorAll(
+    "fluent-checkbox.check-target.checked"
+  ).length;
+  const trustedCheckboxes = document.querySelectorAll(
+    "#trusted-domains fluent-checkbox.check-target"
+  );
+  const toBeCheckedNumber = Array.from(trustedCheckboxes).filter(
+    (cb) => !cb.classList.contains("checked")
+  ).length;
+  trustedCheckboxes.forEach((cb) => (cb.checked = true));
+  const hasUnchecked = checkTargetLength !== checkedTargetLength + toBeCheckedNumber;
+  const sendButton = document.getElementById("send-button");
+  sendButton.disabled = hasUnchecked;
+};
+
+window.onSend = () => {
+  if (reconfirmation.needToConfirm) {
+    reconfirmation.show();
+  } else {
+    sendStatusToParent("ok");
+  }
+};
+
+window.onCancel = () => {
+  sendStatusToParent("cancel");
+};
+
+window.checkboxChanged = (targetElement) => {
+  const checkTargetLength = document.querySelectorAll("fluent-checkbox.check-target").length;
+  const checkedTargetLength = document.querySelectorAll(
+    "fluent-checkbox.check-target.checked"
+  ).length;
+  // If the target is currently checked, the target is unchecked after this function and vice versa.
+  const adjustmentValue = targetElement.classList.contains("checked") ? -1 : 1;
+  const hasUnchecked = checkTargetLength !== checkedTargetLength + adjustmentValue;
+  const sendButton = document.getElementById("send-button");
+  sendButton.disabled = hasUnchecked;
+};
+
+function appendRecipientCheckboxes({ target, groupedRecipients, emphasizeToCc }) {
+  for (const [key, recipients] of Object.entries(groupedRecipients)) {
+    const idForGroup = generateTempId();
+    const idForGroupTitle = generateTempId();
+    target.insertAdjacentHTML(
+      "beforeend",
+      `<div>
+          <h4 id="${idForGroupTitle}"></h4>
+          <fluent-stack id="${idForGroup}" orientation="vertical" vertical-align="start"></fluent-stack>
+      </div>`
+    );
+    //In order to escape special chars, adding values with the text function.
+    document.getElementById(idForGroupTitle).textContent = key;
+    const container = document.getElementById(idForGroup);
+    const createdLabels = new Set();
+    for (const recipient of recipients) {
+      let displayInfo = recipient.address;
+      if (!displayInfo || displayInfo === "") {
+        displayInfo = recipient.displayName;
+      }
+      if (!displayInfo || displayInfo === "") {
+        displayInfo = "Unknown";
+      }
+      const label = `${recipient.type}: ${displayInfo}`;
+      if (createdLabels.has(label)) {
+        continue;
+      }
+      let emphasize = false;
+      if (
+        emphasizeToCc &&
+        (recipient.type === "To" ||
+          recipient.type === "Cc" ||
+          recipient.type === l10n.get("confirmation_requiredAttendee") ||
+          recipient.type === l10n.get("confirmation_optionalAttendee"))
+      ) {
+        emphasize = true;
+      }
+      appendCheckbox({ container, label, emphasize });
+      createdLabels.add(label);
+    }
+  }
+}
+
+function appendMiscCheckboxes({ items, warning, emphasize }) {
+  const container = document.getElementById("attachment-and-others");
+  const createdLabels = new Set();
+  for (const item of items) {
+    const label = item.label || item;
+    if (createdLabels.has(label)) {
+      continue;
+    }
+    appendCheckbox({
+      container,
+      label,
+      warning,
+      emphasize,
+    });
+    createdLabels.add(label);
+  }
+}
+
+function displayCardsHaveCheckboxes() {
+  ["trusted-domains-card", "untrusted-domains-card", "misc-card"]
+    .map((id) => document.querySelector(`#${id}`))
+    .forEach((card) => {
+      if (card?.querySelector("fluent-checkbox.check-target")) {
+        card.hidden = false;
+      }
+    });
+}
+
+function appendCheckbox({ container, id, label, warning, emphasize }) {
+  if (!id) {
+    id = generateTempId();
+  }
+  const extraClasses = new Set();
+  if (warning) {
+    extraClasses.add("warning");
+  }
+  if (emphasize) {
+    extraClasses.add("emphasized");
+  }
+  const checkbox = document.createElement("fluent-checkbox");
+  checkbox.id = id;
+  checkbox.className = "check-target " + [...extraClasses].join(" ");
+  checkbox.setAttribute("onchange", "checkboxChanged(this)");
+
+  //In order to escape special chars, use textContent.
+  checkbox.textContent = label;
+  container.appendChild(checkbox);
+}
+
+function reorderCards(confirmationDialogCardsOrder) {
+  if (!confirmationDialogCardsOrder?.length) {
+    return;
+  }
+
+  const container = document.querySelector(".cards");
+  if (!container) {
+    return;
+  }
+  const specified = confirmationDialogCardsOrder.filter((_) => _ in CARD_ID_MAP);
+  const rest = Config.CARD_DEFAULT_ORDER.filter((_) => !specified.includes(_));
+  const order = [...specified, ...rest];
+
+  for (const key of order) {
+    const card = document.getElementById(CARD_ID_MAP[key]);
+    if (card) {
+      container.appendChild(card);
+    }
+  }
+}
+
+async function onMessageFromParent(arg) {
+  const receivedData = JSON.parse(arg.message);
+  console.log(receivedData);
+  await loadCustomCssIfExists();
+  const data = new ConfirmData(receivedData);
+  await Promise.all([
+    l10n.ready,
+    safeBccConfirmation.loaded,
+    addedDomainsReconfirmation.loaded,
+    unsafeDomainsReconfirmation.loaded,
+    unsafeAddressesReconfirmation.loaded,
+    unsafeFilesReconfirmation.loaded,
+    unsafeBodiesConfirmation.loaded,
+  ]);
+
+  if (data.classified.recipients.trusted.length == 0) {
+    document.getElementById("check-all-trusted").disabled = true;
+  }
+  const groupedByTypeTrusteds = Object.groupBy(
+    data.classified.recipients.trusted,
+    (item) => item.domain
+  );
+  appendRecipientCheckboxes({
+    target: document.getElementById("trusted-domains"),
+    groupedRecipients: groupedByTypeTrusteds,
+  });
+  const groupedByTypeUntrusted = Object.groupBy(
+    data.classified.recipients.untrusted,
+    (item) => item.domain
+  );
+  appendRecipientCheckboxes({
+    target: document.getElementById("untrusted-domains"),
+    groupedRecipients: groupedByTypeUntrusted,
+    emphasizeToCc: data.config.common.EmphasizeUntrustedToCc,
+  });
+
+  if (data.config.common.RequireCheckSubject) {
+    const mailSubject = document.getElementById("mail-subject");
+    mailSubject.textContent = data.target.subject;
+    document.getElementById("mail-subject-checkbox").checked = false;
+    document.getElementById("mail-subject-card").hidden = false;
+  }
+
+  if (data.config.common.RequireCheckBody) {
+    const mailBody = document.getElementById("mail-body");
+    if (data.target.bodyType === Office.CoercionType.Html) {
+      const sanitizedBody = DOMPurify.sanitize(data.target.body);
+      mailBody.insertAdjacentHTML("beforeend", sanitizedBody);
+    } else {
+      const preElement = document.createElement("pre");
+      preElement.textContent = data.target.bodyText;
+      mailBody.appendChild(preElement);
+    }
+    document.getElementById("mail-body-checkbox").checked = false;
+    document.getElementById("mail-body-card").hidden = false;
+  }
+
+  safeBccConfirmation.init(data);
+  appendMiscCheckboxes({
+    items: safeBccConfirmation.warningTooManyDomainsConfirmationItems,
+    warning: true,
+  });
+  appendMiscCheckboxes({
+    items: safeBccConfirmation.warningConversionRecommendationConfirmationItems,
+    warning: true,
+    emphasize: true,
+  });
+
+  unsafeBodiesConfirmation.init(data);
+  appendMiscCheckboxes({ items: unsafeBodiesConfirmation.warningConfirmationItems, warning: true });
+
+  appendMiscCheckboxes({
+    items: Array.from(
+      new Set(
+        data.classified.recipients.unsafeWithDomain.map((recipient) =>
+          recipient.domain.toLowerCase()
+        )
+      ),
+      (domain) => l10n.get("confirmation_unsafeDomainRecipientCheckboxLabel", { domain })
+    ),
+    warning: true,
+  });
+  appendMiscCheckboxes({
+    items: data.classified.recipients.unsafe.map((recipient) =>
+      l10n.get("confirmation_unsafeRecipientCheckboxLabel", { address: recipient.address })
+    ),
+    warning: true,
+  });
+  appendMiscCheckboxes({
+    items: Array.from(
+      new Set(
+        data.classified.recipients.distributionLists.map((recipient) =>
+          recipient.displayName.toLowerCase()
+        )
+      ),
+      (displayName) =>
+        l10n.get("confirmation_unsafeDistributionListCheckboxLabel", { name: displayName })
+    ),
+    warning: true,
+  });
+
+  const attachmentWarningLabels = data.classified.attachments.unsafe.map((attachment) =>
+    l10n.get("confirmation_unsafeAttachmentCheckboxLabel", { name: attachment.name })
+  );
+  const attachmentLabels =
+    data.target.attachments?.map((attachment) =>
+      l10n.get("confirmation_attachmentCheckboxLabel", { name: attachment.name })
+    ) || [];
+  appendMiscCheckboxes({ items: attachmentWarningLabels, warning: true });
+  appendMiscCheckboxes({ items: attachmentLabels });
+
+  reconfirmation.initUI(sendStatusToParent);
+  for (const reconfirmationChecker of [
+    addedDomainsReconfirmation,
+    unsafeDomainsReconfirmation,
+    unsafeAddressesReconfirmation,
+    unsafeFilesReconfirmation,
+    unsafeBodiesConfirmation,
+    safeBccConfirmation,
+  ]) {
+    reconfirmationChecker.init(data);
+    if (!reconfirmationChecker.needToReconfirm) {
+      continue;
+    }
+    for (const content of reconfirmationChecker.generateReconfirmationContentElements()) {
+      reconfirmation.appendContent(content);
+    }
+  }
+  reorderCards(data.config.common.ConfirmationDialogCardsOrder);
+  displayCardsHaveCheckboxes();
+  Dialog.resizeToContent();
+}

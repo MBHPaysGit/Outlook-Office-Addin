@@ -1,0 +1,122 @@
+/* eslint-disable no-undef */
+
+const devCerts = require("office-addin-dev-certs");
+const CopyWebpackPlugin = require("copy-webpack-plugin");
+const HtmlWebpackPlugin = require("html-webpack-plugin");
+
+const urlDev = "https://127.0.0.1:10041/";
+const urlProd = "https://127.0.0.1:10041/"; // CHANGE THIS TO YOUR PRODUCTION DEPLOYMENT LOCATION
+
+async function getHttpsOptions() {
+  const httpsOptions = await devCerts.getHttpsServerOptions();
+  return { ca: httpsOptions.ca, key: httpsOptions.key, cert: httpsOptions.cert };
+}
+
+module.exports = async (env, options) => {
+  const dev = options.mode === "development";
+  const config = {
+    devtool: "source-map",
+    entry: {
+      app: ["./src/web/app.js"],
+      confirm: ["./src/web/confirm.js"],
+      "count-down": ["./src/web/count-down.js"],
+      "convert-to-bcc": ["./src/web/convert-to-bcc.js"],
+      block: ["./src/web/block.js"],
+      setting: ["./src/web/setting.js"],
+    },
+    output: {
+      clean: true,
+    },
+    resolve: {
+      extensions: [".html", ".js"],
+    },
+    module: {
+      rules: [
+        {
+          test: /\.m?js$/,
+          exclude: /node_modules/,
+          use: {
+            loader: "babel-loader",
+            options: {
+              presets: ["@babel/preset-env"],
+            },
+          },
+        },
+        {
+          test: /\.(png|jpg|jpeg|gif|ico)$/,
+          type: "asset/resource",
+          generator: {
+            filename: "assets/[name][ext][query]",
+          },
+        },
+      ],
+    },
+    plugins: [
+      new HtmlWebpackPlugin({
+        filename: "index.html",
+        template: "./src/web/app.html",
+        chunks: ["app"],
+      }),
+      new CopyWebpackPlugin({
+        patterns: [
+          {
+            from: "src/web/*.css",
+            to: "[name][ext][query]",
+          },
+          {
+            from: "assets/*",
+            to: "assets/[name][ext][query]",
+          },
+          {
+            from: "locales/*",
+            to: "locales/[name][ext][query]",
+          },
+          {
+            from: "node_modules/@fluentui/web-components/dist/web-components.min.js",
+            to: "lib/fluentui/web-components/web-components.min.js",
+          },
+        ],
+      }),
+      new HtmlWebpackPlugin({
+        filename: "confirm.html",
+        template: "./src/web/confirm.html",
+        chunks: ["confirm"],
+      }),
+      new HtmlWebpackPlugin({
+        filename: "block.html",
+        template: "./src/web/block.html",
+        chunks: ["block"],
+      }),
+      new HtmlWebpackPlugin({
+        filename: "count-down.html",
+        template: "./src/web/count-down.html",
+        chunks: ["count-down"],
+      }),
+      new HtmlWebpackPlugin({
+        filename: "convert-to-bcc.html",
+        template: "./src/web/convert-to-bcc.html",
+        chunks: ["convert-to-bcc"],
+      }),
+      new HtmlWebpackPlugin({
+        filename: "setting.html",
+        template: "./src/web/setting.html",
+        chunks: ["polyfill", "setting"],
+      }),
+    ],
+    devServer: {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+      },
+      server: {
+        type: "https",
+        options: env.WEBPACK_BUILD || options.https !== undefined ? options.https : await getHttpsOptions(),
+      },
+      port: process.env.npm_package_config_dev_server_port || 10041,
+    },
+    optimization:{
+      minimize: false
+    },
+  };
+
+  return config;
+};

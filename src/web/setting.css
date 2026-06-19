@@ -1,0 +1,80 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+Copyright (c) 2025 ClearCode Inc.
+*/
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+fluent-card {
+  height: auto;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+fluent-card .top-card {
+  margin-top: 0;
+}
+
+fluent-tab-panel {
+  padding-top: 20px;
+  height:100%;
+}
+
+.tab-container {
+  flex-direction: column;
+  height: 100%;
+  left: 0;
+  position: fixed;
+  top: 0;
+  width: 100%;
+}
+
+fluent-tabs {
+  align-items: stretch;
+  flex-flow: column;
+  justify-content: flex-start;
+  overflow: auto;
+  height: 100%;
+}
+
+.button-container fluent-button {
+  margin-left: 10px;
+}
+
+.button-container.card-order-buttons {
+  margin-top: 10px;
+  text-align: left;
+}
+
+.button-container.card-order-buttons fluent-button {
+  margin-left: 0;
+  margin-right: 10px;
+}
+
+fluent-text-area {
+  height: 100%;
+  width: 100%;
+}
+
+#unsafeDomainsTextArea {
+  height: 90%;
+}
+
+fluent-text-area::part(control){
+  height:100%;
+}
+
+fluent-number-field {
+  margin-left: 10px;
+}
+
+#download-button {
+  margin-top: 10px;
+}

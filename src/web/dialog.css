@@ -1,0 +1,60 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+Copyright (c) 2025 ClearCode Inc.
+*/
+fluent-divider {
+  margin: 1em 0;
+}
+
+.button-container {
+  padding-bottom: 10px;
+  margin-top: 20px;
+  text-align: right;
+}
+
+.in-frame .button-container {
+  padding-bottom: 0px;
+}
+
+#cancel-button {
+  margin-left: 10px;
+}
+
+.dialog-content {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding-left: 20px;
+  padding-right: 20px;
+  height: 100%;
+  background: var(--neutral-fill-secondary-rest);
+}
+
+.in-frame .dialog-content {
+  padding-left: 0px;
+  padding-right: 0px;
+  background: var(--neutralPrimarySurface);;
+}
+
+.dialog-footer {
+  position: sticky;
+  bottom: 0;
+  padding: 10px;
+  text-align: center;
+  background: var(--neutral-fill-secondary-rest);
+}
+
+.in-frame .dialog-footer {
+  padding: 5px;
+  background: var(--neutralPrimarySurface);
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+}

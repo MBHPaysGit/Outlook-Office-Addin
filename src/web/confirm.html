@@ -1,0 +1,84 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+Copyright (c) 2025 ClearCode Inc.
+-->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Confirmation</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+    <script src="lib/fluentui/web-components/web-components.min.js" type="module"></script>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" type="text/javascript"></script>
+    <link href="dialog.css" rel="stylesheet">
+    <link href="confirm.css" rel="stylesheet">
+</head>
+
+<body class="dialog-body">
+    <div class="dialog-content">
+        <div class="card-container">
+            <div class="cards">
+                <fluent-card id="trusted-domains-card" hidden>
+                    <div class="heading-container">
+                        <h3 data-l10n-text-content="confirmation_trustedCaption"></h3>
+                        <fluent-button id="check-all-trusted" onclick="onCheckAllTrusted()"
+                            data-l10n-text-content="confirmation_trustedCheckAllButtonLabel"></fluent-button>
+                    </div>
+                    <fluent-divider></fluent-divider>
+                    <div id="trusted-domains">
+                    </div>
+                </fluent-card>
+                <fluent-card id="untrusted-domains-card" hidden>
+                    <h3 data-l10n-text-content="confirmation_untrustedCaption"></h3>
+                    <fluent-divider></fluent-divider>
+                    <div id="untrusted-domains"></div>
+                </fluent-card>
+                <fluent-card id="mail-subject-card" hidden>
+                    <fluent-checkbox id="mail-subject-checkbox" class="check-target title" onchange="checkboxChanged(this)" checked>
+                        <h3 data-l10n-text-content="confirmation_subjectCaption"></h3>
+                    </fluent-checkbox>
+                    <fluent-divider></fluent-divider>
+                    <pre id="mail-subject"></pre>
+                </fluent-card>
+                <fluent-card id="mail-body-card" hidden>
+                    <fluent-checkbox id="mail-body-checkbox" class="check-target title" onchange="checkboxChanged(this)" checked>
+                         <h3 data-l10n-text-content="confirmation_bodyCaption"></h3>
+                    </fluent-checkbox>
+                    <fluent-divider></fluent-divider>
+                    <div id="mail-body"></div>
+                </fluent-card>
+                <fluent-card id="misc-card" hidden>
+                    <h3 data-l10n-text-content="confirmation_miscCaption"></h3>
+                    <fluent-divider></fluent-divider>
+                    <div id="attachment-and-others"></div>
+                </fluent-card>
+            </div>
+        </div>
+    </div>
+    <div class="dialog-footer">
+        <div class="button-container">
+            <fluent-button id="send-button" onclick="onSend()" disabled
+                data-l10n-text-content="confirmation_sendButtonLabel"></fluent-button>
+            <fluent-button id="cancel-button" onclick="onCancel()"
+                data-l10n-text-content="confirmation_cancelButtonLabel"></fluent-button>
+        </div>
+    </div>
+    <fluent-dialog id="reconfirmation-dialog" hidden trap-focus modal>
+        <h2 data-l10n-text-content="newlyAddedDomainReconfirmation_caption"></h2>
+        <div class="reconfirmation-container">
+            <fluent-card id="reconfirmations-card" class="reconfirmation-content">
+            </fluent-card>
+            <div class="new-domain-button-container">
+                <fluent-button id="ok-reconfirmation-button" onclick="onOkReconfirmation()"
+                    data-l10n-text-content="Reconfirmation_okButtonLabel"></fluent-button>
+                <fluent-button id="cancel-reconfirmation-button" onclick="onCancelReconfirmation()"
+                    data-l10n-text-content="Reconfirmation_cancelButtonLabel"></fluent-button>
+            </div>
+        </div>
+    </fluent-dialog>
+</body>
+
+</html>

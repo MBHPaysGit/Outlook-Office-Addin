@@ -1,0 +1,112 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+Copyright (c) 2025 ClearCode Inc.
+-->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <script src="lib/fluentui/web-components/web-components.min.js" type="module"></script>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" type="text/javascript"></script>
+    <link href="dialog.css" rel="stylesheet">
+    <link href="setting.css" rel="stylesheet">
+</head>
+
+<body class="dialog-body">
+    <div class="dialog-content">
+        <fluent-tabs activeid="entrees">
+            <fluent-tab id="generalSetting" data-l10n-text-content="setting_configGeneral"></fluent-tab>
+            <fluent-tab id="trustedDomains" data-l10n-text-content="setting_configTrustedDomains"></fluent-tab>
+            <fluent-tab id="unsafeDomains" data-l10n-text-content="setting_configUnsafeDomains"></fluent-tab>
+            <fluent-tab id="unsafeFiles" data-l10n-text-content="setting_configUnsafeFiles"></fluent-tab>
+            <fluent-tab id="unsafeBodies" data-l10n-text-content="setting_configUnsafeBodies"></fluent-tab>
+            <fluent-tab id="about" data-l10n-text-content="setting_aboutAddon"></fluent-tab>
+            <fluent-tab-panel id="generalSettingPanel">
+                <fluent-card class="top-card">
+                    <strong data-l10n-text-content="setting_configCount"></strong>
+                    <fluent-divider></fluent-divider>
+                    <fluent-checkbox id="countEnabled" data-l10n-text-content="setting_configCountEnabled"></fluent-checkbox><br />
+                    <fluent-checkbox id="countAllowSkip" data-l10n-text-content="setting_configCountAllowSkip"></fluent-checkbox><br />
+                    <fluent-number-field id="countSeconds" data-l10n-text-content="setting_configCountSeconds"></fluent-number-field>
+                </fluent-card>
+                <fluent-card>
+                    <strong data-l10n-text-content="setting_configDelayDeliveryTime"></strong>
+                    <fluent-divider></fluent-divider>
+                    <fluent-checkbox id="delayDeliveryEnabled" data-l10n-text-content="setting_delayDeliveryEnabled"></fluent-checkbox><br />
+                    <fluent-number-field id="delayDeliverySeconds" data-l10n-text-content="setting_delayDeliverySeconds"></fluent-number-field>
+                </fluent-card>
+                <fluent-card>
+                    <strong data-l10n-text-content="setting_configWarning"></strong>
+                    <fluent-divider></fluent-divider>
+                    <fluent-checkbox id="safeBccEnabled" data-l10n-text-content="setting_configSafeBccEnabled"></fluent-checkbox><br />
+                    <fluent-number-field id="safeBccThreshold" data-l10n-text-content="setting_configSafeBccThreshold"></fluent-number-field><br />
+                    <fluent-number-field id="bccConversionRecommendationDomainsThreshold" data-l10n-text-content="setting_configBccConversionRecommendationDomainsThreshold"></fluent-number-field><br />
+                    <fluent-number-field id="safeBccReconfirmationThreshold" data-l10n-text-content="setting_configSafeBccReconfirmationThreshold"></fluent-number-field><br />
+                    <fluent-checkbox id="convertToBccEnabled" data-l10n-text-content="setting_configConvertToBccEnabled"></fluent-checkbox><br />
+                    <fluent-number-field id="convertToBccThreshold" data-l10n-text-content="setting_configConvertToBccThreshold"></fluent-number-field><br />
+                    <fluent-checkbox
+                        id="safeNewDomainsEnabled" data-l10n-text-content="setting_configSafeNewDomainsEnabled"></fluent-checkbox><br />
+                </fluent-card>
+                <fluent-card>
+                    <strong data-l10n-text-content="setting_configConfirmationDialogCardsOrder"></strong>
+                    <fluent-divider></fluent-divider>
+                    <div id="card-order-settings">
+                        <fluent-listbox id="cardOrderList" size="5">
+                            <fluent-option value="TrustedDomains" data-l10n-text-content="setting_cardsOrderTrustedCaption"></fluent-option>
+                            <fluent-option value="UntrustedDomains" data-l10n-text-content="setting_cardsOrderUntrustedCaption" ></fluent-option>
+                            <fluent-option value="Subject" data-l10n-text-content="setting_cardsOrderSubjectCaption"></fluent-option>
+                            <fluent-option value="Body" data-l10n-text-content="setting_cardsOrderBodyCaption"></fluent-option>
+                            <fluent-option value="Misc" data-l10n-text-content="setting_cardsOrderMiscCaption"></fluent-option>
+                        </fluent-listbox>
+                        <div id="card-order-buttons" class="button-container card-order-buttons">
+                            <fluent-button id="moveUpButton" onclick="onMoveUpCard()" data-l10n-text-content="setting_moveUp"></fluent-button>
+                            <fluent-button id="moveDownButton" onclick="onMoveDownCard()" data-l10n-text-content="setting_moveDown"></fluent-button>
+                        </div>
+                    </div>
+                </fluent-card>
+                <fluent-card>
+                    <strong data-l10n-text-content="setting_configMisc"></strong>
+                    <fluent-divider></fluent-divider>
+                    <fluent-checkbox id="requireCheckSubject" data-l10n-text-content="setting_requireCheckSubject"></fluent-checkbox><br />
+                    <fluent-checkbox id="requireCheckBody" data-l10n-text-content="setting_requireCheckBody"></fluent-checkbox><br />
+                    <fluent-checkbox id="mainSkipIfNoExt" data-l10n-text-content="setting_configMainSkipIfNoExt"></fluent-checkbox><br />
+                        <fluent-checkbox id="mainSkipIfOnlyOneExt" data-l10n-text-content="setting_configMainSkipIfOnlyOneExt"></fluent-checkbox><br />
+                    <fluent-checkbox id="countSkipIfNoExt" data-l10n-text-content="setting_configCountSkipIfNoExt"></fluent-checkbox><br />
+                    <fluent-checkbox id="AppointmentConfirmationEnabled" data-l10n-text-content="setting_configAppointmentConfirmationEnabled"></fluent-checkbox><br />
+                    <fluent-checkbox id="blockDistributionLists" data-l10n-text-content="setting_configBlockDistributionLists"></fluent-checkbox><br />
+                    <fluent-checkbox id="emphasizeUntrustedToCc" data-l10n-text-content="setting_configEmphasizeUntrustedToCc"></fluent-checkbox>
+                </fluent-card>
+            </fluent-tab-panel>
+            <fluent-tab-panel id="trustedDomainsPanel">
+                <fluent-text-area id="trustedDomainsTextArea"></fluent-text-area>
+            </fluent-tab-panel>
+            <fluent-tab-panel id="unsafeDomainsPanel">
+                <fluent-text-area id="unsafeDomainsTextArea"></fluent-text-area><br/><br/>
+                <fluent-checkbox id="untrustUnsafeRecipients" data-l10n-text-content="setting_configUntrustUnsafeRecipients"></fluent-checkbox>
+            </fluent-tab-panel>
+            <fluent-tab-panel id="unsafeFilesPanel">
+                <fluent-text-area id="unsafeFilesTextArea"></fluent-text-area>
+            </fluent-tab-panel>
+            <fluent-tab-panel id="unsafeBodiesPanel">
+                <fluent-text-area id="unsafeBodiesTextArea"></fluent-text-area>
+            </fluent-tab-panel>
+            <fluent-tab-panel id="aboutPanel">
+                <h3>FlexConfirmMail</h3>
+                <p>2025 ClearCode Inc. All rights reserved.</p>
+                <fluent-button id="download-button" onclick="onDownload()" data-l10n-text-content="setting_downloadSetting"></fluent-button>
+            </fluent-tab-panel>
+        </fluent-tabs>
+    </div>
+    <div class="dialog-footer">
+        <div class="button-container">
+            <fluent-button id="reset-button" onclick="onReset()" data-l10n-text-content="setting_resetSetting"></fluent-button>
+            <fluent-button id="save-button" onclick="onSave()" data-l10n-text-content="setting_saveAndQuit"></fluent-button>
+            <fluent-button id="cancel-button" onclick="onCancel()" data-l10n-text-content="setting_cancel"></fluent-button>
+        </div>
+    </div>
+</body>
+
+</html>

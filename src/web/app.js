@@ -1,0 +1,404 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+Copyright (c) 2025 ClearCode Inc.
+*/
+import { L10n } from "./l10n.mjs";
+import { ConfigLoader } from "./config-loader.mjs";
+import { ConfirmData } from "./confirm-data.mjs";
+import { OfficeDataAccessHelper } from "./office-data-access-helper.mjs";
+
+let locale;
+
+Office.onReady(() => {
+  const language = Office.context.displayLanguage;
+  document.documentElement.setAttribute("lang", language);
+  locale = L10n.get(language);
+  locale.ready.then(() => locale.translateAll());
+});
+
+function sleepAsync(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function openDialog({ url, data, asyncContext, retryCount = 5, ...params }) {
+  const asyncResult = await new Promise((resolve) => {
+    Office.context.ui.displayDialogAsync(
+      url,
+      {
+        asyncContext,
+        displayInIframe: true,
+        promptBeforeOpen: false,
+        ...params,
+      },
+      resolve
+    );
+  });
+  asyncContext = asyncResult.asyncContext;
+  if (asyncResult.status === Office.AsyncResultStatus.Failed) {
+    console.log(`Failed to open dialog: ${asyncResult.error.code}`);
+    switch (asyncResult.error.code) {
+      case 12007:
+        console.log(
+          `could not open dialog before the previous dialog is not closed completely, so we need to retry it manually. retryCount: ${retryCount}`
+        );
+        if (retryCount <= 0) {
+          console.log("exceeded maximum retry count.");
+          break;
+        }
+        await sleepAsync(200);
+        return openDialog({ url, data, asyncContext, retryCount: retryCount - 1, ...params });
+
+      default:
+        break;
+    }
+    return {
+      status: null,
+      asyncContext,
+    };
+  }
+
+  const dialog = asyncResult.value;
+  return new Promise((resolve) => {
+    dialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => {
+      const messageFromDialog = JSON.parse(arg.message);
+      console.debug("messageFromDialog: ", messageFromDialog);
+      if (messageFromDialog.status == "ready") {
+        const messageToDialog = JSON.stringify(data);
+        dialog.messageChild(messageToDialog);
+      } else if (messageFromDialog.status == "saveUserConfig") {
+        // We can't execute Office.context.roamingSettings.saveAsync in the dialog context
+        // as Office API specification. In order to save the config to roamingSettings, we
+        // should get the current config from the dialog message and save it in this function.
+        const config = messageFromDialog.config ?? {};
+        console.debug("user config: ", config);
+        Office.context.roamingSettings.set("Common", config.commonString ?? "");
+        Office.context.roamingSettings.set("TrustedDomains", config.trustedDomainsString ?? "");
+        Office.context.roamingSettings.set("UnsafeDomains", config.unsafeDomainsString ?? "");
+        Office.context.roamingSettings.set("UnsafeFiles", config.unsafeFilesString ?? "");
+        Office.context.roamingSettings.set("UnsafeBodies", config.unsafeBodiesString ?? "");
+        Office.context.roamingSettings.saveAsync((saveResult) => {
+          // This function should return (resolve) after finishing saveAsync.
+          // If returing before finishing saveAsync, roamingSettings is not
+          // updated until refresh the page.
+          if (saveResult.status === Office.AsyncResultStatus.Succeeded) {
+            console.debug("Settings saved successfully");
+            dialog.close();
+            resolve({
+              status: messageFromDialog.status,
+              asyncContext,
+            });
+          } else {
+            console.error("Error saving settings:", saveResult.error.message);
+            resolve({
+              status: Office.AsyncResultStatus.Failed,
+              asyncContext,
+            });
+          }
+        });
+      } else {
+        dialog.close();
+        resolve({
+          status: messageFromDialog.status,
+          asyncContext,
+        });
+      }
+    });
+    dialog.addEventHandler(Office.EventType.DialogEventReceived, (arg) => {
+      if (arg.error === 12006) {
+        // Closed with the up-right "X" button.
+        resolve({
+          status: null,
+          asyncContext,
+        });
+      }
+    });
+  });
+}
+
+function charsToPercentage(chars, maxSize) {
+  const bodyFontSize = parseInt(window.getComputedStyle(document.body).fontSize);
+  return Math.floor(((bodyFontSize * chars) / maxSize) * 100);
+}
+
+async function tryConfirm(data, asyncContext) {
+  console.debug("classified: ", data.classified);
+
+  if (data.blockSending) {
+    const { status, asyncContext: updatedAsyncContext } = await openDialog({
+      url: window.location.origin + "/block.html",
+      data,
+      asyncContext,
+      height: Math.min(40, charsToPercentage(30, screen.availHeight)),
+      width: Math.min(80, charsToPercentage(60, screen.availWidth)),
+    });
+    console.debug("status: ", status);
+    asyncContext = updatedAsyncContext;
+    return {
+      allowed: false,
+      asyncContext,
+    };
+  }
+
+  if (data.skipConfirm) {
+    console.log("Skip confirmation: no untrusted recipient");
+    return {
+      allowed: true,
+      asyncContext,
+    };
+  }
+
+  const { status, asyncContext: updatedAsyncContext } = await openDialog({
+    url: window.location.origin + "/confirm.html",
+    data,
+    asyncContext,
+    height: Math.min(60, charsToPercentage(50, screen.availHeight)),
+    width: Math.min(90, charsToPercentage(90, screen.availWidth)),
+  });
+  console.debug("status: ", status);
+
+  asyncContext = updatedAsyncContext;
+
+  if (status === null) {
+    // failed to open, or closed by the closebox
+    return {
+      allowed: false,
+      asyncContext,
+    };
+  }
+
+  return {
+    allowed: status === "ok",
+    asyncContext,
+  };
+}
+
+async function tryCountDown(data, asyncContext) {
+  if (data.skipCountDown) {
+    return {
+      allowed: true,
+      asyncContext,
+    };
+  }
+
+  const { status, asyncContext: updatedAsyncContext } = await openDialog({
+    url: window.location.origin + "/count-down.html",
+    data,
+    asyncContext,
+    height: Math.min(20, charsToPercentage(15, screen.availHeight)),
+    width: Math.min(20, charsToPercentage(25, screen.availWidth)),
+  });
+  console.debug("status: ", status);
+
+  asyncContext = updatedAsyncContext;
+
+  if (status === null) {
+    // failed to open, or closed by the closebox
+    return {
+      allowed: false,
+      asyncContext,
+    };
+  }
+
+  return {
+    allowed: status === "ok" || status == "done" || status == "skip",
+    asyncContext,
+  };
+}
+
+async function tryConvertToBcc(data, asyncContext) {
+  if (!data.needToConvertToBcc) {
+    return false;
+  }
+
+  const { status } = await openDialog({
+    url: window.location.origin + "/convert-to-bcc.html",
+    data,
+    asyncContext,
+    height: Math.min(20, charsToPercentage(20, screen.availHeight)),
+    width: Math.min(45, charsToPercentage(45, screen.availWidth)),
+  });
+  console.debug("status: ", status);
+  if (status == "convertToBcc") {
+    data.convertRecipientsToBcc();
+    return true;
+  }
+  return false;
+}
+
+async function onItemSendInner(event) {
+  let asyncContext = event;
+  const data = await ConfirmData.getCurrentDataAsync(Office.context.mailbox.item.itemType, locale);
+  console.debug(data);
+
+  if (data.skipAll) {
+    asyncContext.completed({ allowEvent: true });
+    return;
+  }
+
+  const needToConvertToBccOnSend = await tryConvertToBcc(data, asyncContext);
+
+  {
+    const { allowed, asyncContext: updatedAsyncContext } = await tryConfirm(data, asyncContext);
+    if (!allowed) {
+      console.debug("canceled by confirmation");
+      asyncContext.completed({ allowEvent: false });
+      return;
+    }
+    asyncContext = updatedAsyncContext;
+  }
+
+  {
+    const { allowed, asyncContext: updatedAsyncContext } = await tryCountDown(data, asyncContext);
+    if (!allowed) {
+      console.debug("canceled by countdown");
+      asyncContext.completed({ allowEvent: false });
+      return;
+    }
+    asyncContext = updatedAsyncContext;
+  }
+
+  console.debug("granted: continue to send");
+
+  if (data.delayDelivery) {
+    const currentSetting = await OfficeDataAccessHelper.getDelayDeliveryTime();
+    if (currentSetting == 0) {
+      const currentTime = new Date().getTime();
+      const delayDeliverySeconds = data.config.common?.DelayDeliverySeconds ?? 60;
+      const delayInMilliseconds = delayDeliverySeconds * 1000;
+      const deliveryTime = new Date(currentTime + delayInMilliseconds);
+      await OfficeDataAccessHelper.setDelayDeliveryTimeAsync(deliveryTime);
+    }
+  }
+
+  if (needToConvertToBccOnSend) {
+    await Promise.all([
+      OfficeDataAccessHelper.clearToAsync(),
+      OfficeDataAccessHelper.clearCcAsync(),
+      OfficeDataAccessHelper.setBccAsync(data.target.bcc),
+    ]);
+  }
+
+  await OfficeDataAccessHelper.removeOriginalRecipientsSessionDataAsync(data.itemType);
+  asyncContext.completed({ allowEvent: true });
+}
+
+async function onItemSend(event) {
+  try {
+    return await onItemSendInner(event);
+  } catch (error) {
+    try {
+      console.error("Error occurred while sending item:", error);
+    } catch {
+      console.error("Error occurred while logging the exception error contents.");
+    }
+    event.completed({ allowEvent: false });
+  }
+}
+window.onItemSend = onItemSend;
+
+async function onNewMessageComposeCreated(event) {
+  try {
+    const [to, cc, bcc] = await Promise.all([
+      OfficeDataAccessHelper.getToAsync(),
+      OfficeDataAccessHelper.getCcAsync(),
+      OfficeDataAccessHelper.getBccAsync(),
+    ]);
+    if (to.length > 0 || cc.length > 0 || bcc.length > 0) {
+      const originalRecipients = {
+        to,
+        cc,
+        bcc,
+      };
+      await OfficeDataAccessHelper.setOriginalRecipientsSessionDataAsync(
+        Office.context.mailbox.item.itemType,
+        JSON.stringify(originalRecipients)
+      );
+    }
+  } catch (error) {
+    try {
+      console.error("Error occurred while creating new message compose:", error);
+    } catch {
+      console.error("Error occurred while logging the exception error contents.");
+    }
+  }
+  event.completed();
+}
+window.onNewMessageComposeCreated = onNewMessageComposeCreated;
+
+async function onAppointmentOrganizer(event) {
+  try {
+    const [requiredAttendees, optionalAttendees] = await Promise.all([
+      OfficeDataAccessHelper.getRequiredAttendeeAsync(),
+      OfficeDataAccessHelper.getOptionalAttendeeAsync(),
+    ]);
+
+    if (Office.context.platform == Office.PlatformType.PC) {
+      // On classic Outlook, requiredAttendees has a current user even if
+      // this is a new appointment, in that case, subsequent processing
+      // erroneously determines that there are existing attendees.
+      // This function has nothing to do if this is a new appointment
+      // because there is no existing attendees. So return if this is a
+      // new appointment.
+      const id = await OfficeDataAccessHelper.getItemIdAsync();
+      if (!id) {
+        // On classic Outlook, if the id is not defined, this is a new appointment.
+        event.completed();
+        return;
+      }
+    }
+
+    if (requiredAttendees.length > 0 || optionalAttendees.length > 0) {
+      const originalAttendees = {
+        requiredAttendees,
+        optionalAttendees,
+      };
+      await OfficeDataAccessHelper.setOriginalRecipientsSessionDataAsync(
+        Office.context.mailbox.item.itemType,
+        JSON.stringify(originalAttendees)
+      );
+    }
+  } catch (error) {
+    try {
+      console.error("Error occurred while creating new appointment:", error);
+    } catch {
+      console.error("Error occurred while logging the exception error contents.");
+    }
+  }
+  event.completed();
+}
+window.onAppointmentOrganizer = onAppointmentOrganizer;
+
+async function onOpenSettingDialog(event) {
+  try {
+    const policyConfig = await ConfigLoader.loadFileConfig();
+    const userConfig = await ConfigLoader.loadUserConfig();
+    const data = {
+      policy: policyConfig,
+      user: userConfig,
+    };
+    const asyncContext = event;
+    const { status, asyncContext: updatedAsyncContext } = await openDialog({
+      url: window.location.origin + "/setting.html",
+      data,
+      asyncContext,
+      height: Math.min(80, charsToPercentage(70, screen.availHeight)),
+      width: Math.min(80, charsToPercentage(80, screen.availWidth)),
+    });
+    console.debug(`onOpensettingDialog: ${status}`);
+    updatedAsyncContext.completed({ allowEvent: true });
+  } catch (error) {
+    try {
+      console.error("Error occurred while opening setting dialog:", error);
+    } catch {
+      console.error("Error occurred while logging the exception error contents.");
+    }
+    event.completed({ allowEvent: false });
+  }
+}
+window.onOpenSettingDialog = onOpenSettingDialog;
+
+Office.actions.associate("onNewMessageComposeCreated", onNewMessageComposeCreated);
+Office.actions.associate("onAppointmentOrganizer", onAppointmentOrganizer);
